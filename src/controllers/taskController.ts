@@ -7,6 +7,8 @@ import {
   getFallbackLogs,
   getFallbackTasks,
   toggleFallbackTaskStatus,
+  updateFallbackTask,
+  deleteFallbackTask,
 } from "../lib/fallbackStore";
 
 const useFallbackStore = () => {
@@ -50,6 +52,73 @@ export const createTask = async (req: Request, res: Response) => {
     res.status(201).json(task);
   } catch (error) {
     res.status(500).json({ message: "Failed to create task", error });
+  }
+};
+
+export const updateTask = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { title, description } = req.body;
+
+    if (!title || !description) {
+      return res.status(400).json({ message: "Title and description are required" });
+    }
+
+    if (useFallbackStore()) {
+      const result = updateFallbackTask(id, title, description);
+      if (!result) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      return res.status(200).json(result.task);
+    }
+
+    const task = await Task.findByIdAndUpdate(
+      id,
+      { title, description },
+      { new: true, runValidators: true }
+    );
+
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+
+    await ActivityLog.create({
+      task: task._id,
+      activity: `Task "${task.title}" was updated`,
+    });
+
+    res.status(200).json(task);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to update task", error });
+  }
+};
+
+export const deleteTask = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (useFallbackStore()) {
+      const result = deleteFallbackTask(id);
+      if (!result) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      return res.status(200).json({ id: result.taskId });
+    }
+
+    const task = await Task.findByIdAndDelete(id);
+
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+
+    await ActivityLog.create({
+      task: task._id,
+      activity: `Task "${task.title}" was deleted`,
+    });
+
+    res.status(200).json({ id: task._id });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to delete task", error });
   }
 };
 

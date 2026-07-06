@@ -69,6 +69,49 @@ export const createFallbackTask = (title: string, description: string): Fallback
   return cloneTask(task);
 };
 
+export const updateFallbackTask = (
+  id: string,
+  title: string,
+  description: string
+): { task: FallbackTask; log: FallbackLog } | null => {
+  const task = fallbackTasks.find((item) => item._id === id);
+  if (!task) {
+    return null;
+  }
+
+  task.title = title;
+  task.description = description;
+  task.updatedAt = new Date();
+
+  const log: FallbackLog = {
+    _id: `fallback-log-${nextLogId++}`,
+    task: task._id,
+    activity: `Task "${task.title}" was updated`,
+    timestamp: task.updatedAt,
+  };
+
+  fallbackLogs.push(log);
+  return { task: cloneTask(task), log: cloneLog(log) };
+};
+
+export const deleteFallbackTask = (id: string): { taskId: string; log: FallbackLog } | null => {
+  const index = fallbackTasks.findIndex((item) => item._id === id);
+  if (index === -1) {
+    return null;
+  }
+
+  const [task] = fallbackTasks.splice(index, 1);
+  const log: FallbackLog = {
+    _id: `fallback-log-${nextLogId++}`,
+    task: task._id,
+    activity: `Task "${task.title}" was deleted`,
+    timestamp: new Date(),
+  };
+
+  fallbackLogs.push(log);
+  return { taskId: task._id, log: cloneLog(log) };
+};
+
 export const toggleFallbackTaskStatus = (
   id: string
 ): { task: FallbackTask; log?: FallbackLog; unchanged: boolean } | null => {
