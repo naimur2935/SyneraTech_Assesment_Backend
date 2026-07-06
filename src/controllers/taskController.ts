@@ -1,16 +1,25 @@
 import { Request, Response } from "express";
-import Task, { TaskStatus } from "../models/Task";
+import mongoose from "mongoose";
+import Task from "../models/Task";
 import ActivityLog from "../models/ActivityLog";
+import {
+  createFallbackTask,
+  getFallbackLogs,
+  getFallbackTasks,
+  toggleFallbackTaskStatus,
+} from "../lib/fallbackStore";
 
-// Defines the fixed forward progression of a task's lifecycle.
-const STATUS_FLOW: Record<TaskStatus, TaskStatus> = {
-  "To Do": "In Progress",
-  "In Progress": "Done",
-  Done: "Done", // Already at the final stage; toggling has no further effect.
+const useFallbackStore = () => {
+  const state = mongoose.connection.readyState;
+  return state !== mongoose.ConnectionStates.connected && state !== mongoose.ConnectionStates.connecting;
 };
 
 export const getTasks = async (_req: Request, res: Response) => {
   try {
+    if (useFallbackStore()) {
+      return res.status(200).json(getFallbackTasks());
+    }
+
     const tasks = await Task.find().sort({ createdAt: 1 });
     res.status(200).json(tasks);
   } catch (error) {
@@ -26,6 +35,11 @@ export const createTask = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Title and description are required" });
     }
 
+    if (useFallbackStore()) {
+      const task = createFallbackTask(title, description);
+      return res.status(201).json(task);
+    }
+
     const task = await Task.create({ title, description, status: "To Do" });
 
     await ActivityLog.create({
@@ -39,15 +53,20 @@ export const createTask = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * Core automation engine.
- * Every status toggle performs two operations together:
- *   1. Update the task's status in the database.
- *   2. Automatically generate a timestamped activity log for that change.
- */
 export const toggleTaskStatus = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+
+    if (useFallbackStore()) {
+      const result = toggleFallbackTaskStatus(id);
+
+      if (!result) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      return res.status(200).json(result);
+    }
+
     const task = await Task.findById(id);
 
     if (!task) {
@@ -55,10 +74,9 @@ export const toggleTaskStatus = async (req: Request, res: Response) => {
     }
 
     const previousStatus = task.status;
-    const nextStatus = STATUS_FLOW[previousStatus];
+    const nextStatus = task.status === "To Do" ? "In Progress" : task.status === "In Progress" ? "Done" : "Done";
 
     if (previousStatus === nextStatus) {
-      // Already Done - nothing to do, but respond cleanly rather than erroring.
       return res.status(200).json({ task, unchanged: true });
     }
 
