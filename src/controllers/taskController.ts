@@ -22,7 +22,7 @@ export const getTasks = async (_req: Request, res: Response) => {
       return res.status(200).json(getFallbackTasks());
     }
 
-    const tasks = await Task.find().sort({ createdAt: 1 });
+    const tasks = await Task.find().sort({ createdAt: -1 });
     res.status(200).json(tasks);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch tasks", error });
